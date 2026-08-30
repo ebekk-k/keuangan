@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Buku Kas Digital</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/prop-types/prop-types.min.js"></script>
+  <script src="https://unpkg.com/recharts/umd/Recharts.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+    const { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } = window.Recharts || {};
+
+    // PERBAIKAN: Polifil storage yang aman untuk JSON.parse dan berjalan di file lokal
+    if (!window.storage) {
+      window.storage = {
+        get: async (key) => {
+          try {
+            return { value: localStorage.getItem(key) };
+          } catch (e) {
+            return { value: null };
+          }
+        },
+        set: async (key, val) => {
+          try {
+            localStorage.setItem(key, val);
+          } catch (e) {
+            console.warn("Local storage diblokir oleh browser.");
+          }
+        }
+      };
+    }
+
+    const Pencil = ({ size }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>;
+    const Trash2 = ({ size }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>;
+    const ChevronLeft = ({ size }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>;
+    const ChevronRight = ({ size }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>;
+    const X = ({ size }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>;
+    const Wallet = ({ size, color }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color || "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"></path><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"></path><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"></path></svg>;
+    const User = ({ size }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>;
+    const Users = ({ size }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><polyline points="16 11 16 11 16 11"></polyline><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>;
+    const Settings2 = ({ size }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 7h-9"></path><path d="M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>;
+
+    const MONTHS_ID = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+    const DEFAULT_CATEGORIES = {
+      pribadi: {
+        pengeluaran: ["Makanan & Minuman", "Transportasi", "Belanja", "Tagihan & Utilitas", "Kesehatan", "Hiburan", "Pendidikan", "Lainnya"],
+        pemasukan: ["Gaji", "Bonus / THR", "Usaha / Bisnis", "Investasi", "Hadiah / Transfer", "Lainnya"],
+      },
+      tim: {
+        pengeluaran: ["Sewa Alat", "Transportasi & Logistik", "Konsumsi Kru", "Talent & Kru", "Lokasi / Venue", "Pasca Produksi", "Perlengkapan", "Lainnya"],
+        pemasukan: ["Dana / Budget Masuk", "Sponsor", "Investor / Modal", "Reimburse", "Lainnya"],
+      },
+    };
+
+    const DEFAULT_ACCOUNTS = {
+      pribadi: ["Cash", "BRI", "BNI", "BCA", "Mandiri"],
+      tim: ["Kas Tim", "Rekening Produksi"],
+    };
+
+    const SCOPE_META = {
+      pribadi: { label: "Keuangan Pribadi", shortLabel: "Pribadi", icon: "user" },
+      tim: { label: "Kas Tim Produksi", shortLabel: "Tim Produksi", icon: "users" },
+    };
+
+    const rupiah = (n) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(n || 0);
+    const todayStr = () => new Date().toISOString().slice(0, 10);
+    
+    // PERBAIKAN: Cek keamanan window.crypto agar tidak crash di browser tertentu
+    const uid = () => (window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : "id-" + Date.now() + Math.random().toString(16).slice(2));
+
+    function emptyForm(scope, categories, accounts) {
+      return {
+        id: null,
+        date: todayStr(),
+        type: "pengeluaran",
+        category: (categories[scope] && categories[scope].pengeluaran[0]) || "",
+        detail: "",
+        amount: "",
+        account: (accounts[scope] && accounts[scope][0]) || "",
+      };
+    }
+
+    function FinanceApp() {
+      const [loading, setLoading] = useState(true);
+      const [activeScope, setActiveScope] = useState("pribadi");
+      const [transactions, setTransactions] = useState([]);
+      const [accounts, setAccounts] = useState(DEFAULT_ACCOUNTS);
+      const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+      const [form, setForm] = useState(() => emptyForm("pribadi", DEFAULT_CATEGORIES, DEFAULT_ACCOUNTS));
+      const [manageOpen, setManageOpen] = useState({ category: false, account: false });
+      const [newCategoryInput, setNewCategoryInput] = useState("");
+      const [newAccountInput, setNewAccountInput] = useState("");
+      const [cursor, setCursor] = useState(() => {
+        const d = new Date();
+        return { year: d.getFullYear(), month: d.getMonth() };
+      });
+      const [chartTab, setChartTab] = useState("pengeluaran");
+      const [error, setError] = useState("");
+      const [saving, setSaving] = useState(false);
+
+      useEffect(() => {
+        (async () => {
+          try {
+            const [tx, acc, cat] = await Promise.allSettled([
+              window.storage.get("transactions", false),
+              window.storage.get("accounts", false),
+              window.storage.get("categories", false),
+            ]);
+            let loadedAccounts = DEFAULT_ACCOUNTS;
+            let loadedCategories = DEFAULT_CATEGORIES;
+            
+            if (tx.status === "fulfilled" && tx.value && tx.value.value) {
+              const parsed = JSON.parse(tx.value.value);
+              setTransactions(parsed.map((t) => ({ ...t, scope: t.scope || "pribadi" })));
+            }
+            if (acc.status === "fulfilled" && acc.value && acc.value.value) {
+              const parsed = JSON.parse(acc.value.value);
+              loadedAccounts = {
+                pribadi: parsed.pribadi && parsed.pribadi.length ? parsed.pribadi : DEFAULT_ACCOUNTS.pribadi,
+                tim: parsed.tim && parsed.tim.length ? parsed.tim : DEFAULT_ACCOUNTS.tim,
+              };
+              setAccounts(loadedAccounts);
+            }
+            if (cat.status === "fulfilled" && cat.value && cat.value.value) {
+              const parsed = JSON.parse(cat.value.value);
+              loadedCategories = {
+                pribadi: {
+                  pengeluaran: parsed.pribadi?.pengeluaran?.length ? parsed.pribadi.pengeluaran : DEFAULT_CATEGORIES.pribadi.pengeluaran,
+                  pemasukan: parsed.pribadi?.pemasukan?.length ? parsed.pribadi.pemasukan : DEFAULT_CATEGORIES.pribadi.pemasukan,
+                },
+                tim: {
+                  pengeluaran: parsed.tim?.pengeluaran?.length ? parsed.tim.pengeluaran : DEFAULT_CATEGORIES.tim.pengeluaran,
+                  pemasukan: parsed.tim?.pemasukan?.length ? parsed.tim.pemasukan : DEFAULT_CATEGORIES.tim.pemasukan,
+                },
+              };
+              setCategories(loadedCategories);
+            }
+            setForm(emptyForm("pribadi", loadedCategories, loadedAccounts));
+          } catch (e) {
+            console.error(e);
+          } finally {
+            setLoading(false);
+          }
+        })();
+      }, []);
+
+      async function persistTransactions(next) {
+        setTransactions(next);
+        try { await window.storage.set("transactions", JSON.stringify(next), false); } 
+        catch (e) { setError("Gagal menyimpan data. Coba lagi."); }
+      }
+
+      async function persistAccounts(next) {
+        setAccounts(next);
+        try { await window.storage.set("accounts", JSON.stringify(next), false); } 
+        catch (e) { setError("Gagal menyimpan daftar akun."); }
+      }
+
+      async function persistCategories(next) {
+        setCategories(next);
+        try { await window.storage.set("categories", JSON.stringify(next), false); } 
+        catch (e) { setError("Gagal menyimpan daftar kategori."); }
+      }
+
+      function switchScope(scope) {
+        if (scope === activeScope) return;
+        setActiveScope(scope);
+        setForm(emptyForm(scope, categories, accounts));
+        setError("");
+        setManageOpen({ category: false, account: false });
+        setChartTab("pengeluaran");
+      }
+
+      function resetForm() {
+        setForm(emptyForm(activeScope, categories, accounts));
+      }
+
+      function handleTypeChange(type) {
+        setForm((f) => ({ ...f, type, category: categories[activeScope][type][0] || "" }));
+      }
+
+      async function handleSubmit(e) {
+        e.preventDefault();
+        setError("");
+        const amountNum = Number(String(form.amount).replace(/[^0-9]/g, ""));
+        if (!form.date || !amountNum || amountNum <= 0 || !form.account || !form.category) {
+          setError("Lengkapi tanggal, kategori, nominal (lebih dari 0), dan akun terlebih dahulu.");
+          return;
+        }
+        setSaving(true);
+        const record = {
+          id: form.id || uid(),
+          scope: activeScope,
+          date: form.date,
+          type: form.type,
+          category: form.category,
+          detail: form.detail.trim(),
+          amount: amountNum,
+          account: form.account,
+          createdAt: form.id ? undefined : Date.now(),
+        };
+        let next;
+        if (form.id) {
+          next = transactions.map((t) => (t.id === form.id ? { ...t, ...record, createdAt: t.createdAt } : t));
+        } else {
+          next = [...transactions, record];
+        }
+        await persistTransactions(next);
+        setSaving(false);
+        resetForm();
+      }
+
+      function handleEdit(t) {
+        setForm({
+          id: t.id,
+          date: t.date,
+          type: t.type,
+          category: t.category,
+          detail: t.detail,
+          amount: String(t.amount),
+          account: t.account,
+        });
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      async function handleDelete(id) {
+        const next = transactions.filter((t) => t.id !== id);
+        await persistTransactions(next);
+        if (form.id === id) resetForm();
+      }
+
+      async function addCategory() {
+        const name = newCategoryInput.trim();
+        if (!name) return;
+        const list = categories[activeScope][form.type];
+        if (list.some((c) => c.toLowerCase() === name.toLowerCase())) {
+          setNewCategoryInput("");
+          return;
+        }
+        const next = { ...categories, [activeScope]: { ...categories[activeScope], [form.type]: [...list, name] } };
+        await persistCategories(next);
+        setNewCategoryInput("");
+      }
+
+      async function removeCategory(name) {
+        const list = categories[activeScope][form.type];
+        if (list.length <= 1) {
+          setError("Minimal harus ada 1 kategori.");
+          return;
+        }
+        const nextList = list.filter((c) => c !== name);
+        const next = { ...categories, [activeScope]: { ...categories[activeScope], [form.type]: nextList } };
+        await persistCategories(next);
+        if (form.category === name) setForm((f) => ({ ...f, category: nextList[0] }));
+      }
+
+      async function addAccount() {
+        const name = newAccountInput.trim();
+        if (!name) return;
+        const list = accounts[activeScope];
+        if (list.some((a) => a.toLowerCase() === name.toLowerCase())) {
+          setNewAccountInput("");
+          return;
+        }
+        const next = { ...accounts, [activeScope]: [...list, name] };
+        await persistAccounts(next);
+        setNewAccountInput("");
+      }
+
+      async function removeAccount(name) {
+        const list = accounts[activeScope];
+        if (list.length <= 1) {
+          setError("Minimal harus ada 1 akun.");
+          return;
+        }
+        const nextList = list.filter((a) => a !== name);
+        const next = { ...accounts, [activeScope]: nextList };
+        await persistAccounts(next);
+        if (form.account === name) setForm((f) => ({ ...f, account: nextList[0] }));
+      }
+
+      async function handleResetScope() {
+        const label = SCOPE_META[activeScope].label;
+        if (!window.confirm(`Hapus semua transaksi pada buku "${label}"? Tindakan ini tidak bisa dibatalkan.`)) return;
+        const next = transactions.filter((t) => t.scope !== activeScope);
+        await persistTransactions(next);
+      }
+
+      const scopeTx = useMemo(() => transactions.filter((t) => t.scope === activeScope), [transactions, activeScope]);
+      const monthTx = useMemo(() => scopeTx.filter((t) => {
+        const d = new Date(t.date + "T00:00:00");
+        return d.getFullYear() === cursor.year && d.getMonth() === cursor.month;
+      }), [scopeTx, cursor]);
+
+      const monthIncome = monthTx.filter((t) => t.type === "pemasukan").reduce((s, t) => s + t.amount, 0);
+      const monthExpense = monthTx.filter((t) => t.type === "pengeluaran").reduce((s, t) => s + t.amount, 0);
+      const monthSaldo = monthIncome - monthExpense;
+
+      const scopeSaldo = useMemo(() => scopeTx.reduce((s, t) => s + (t.type === "pemasukan" ? t.amount : -t.amount), 0), [scopeTx]);
+      const scopeAccounts = accounts[activeScope];
+      const scopeCategories = categories[activeScope];
+
+      const accountBalances = useMemo(() => {
+        const map = {};
+        scopeAccounts.forEach((a) => (map[a] = 0));
+        scopeTx.forEach((t) => { map[t.account] = (map[t.account] || 0) + (t.type === "pemasukan" ? t.amount : -t.amount); });
+        return scopeAccounts.map((a) => ({ account: a, balance: map[a] || 0 }));
+      }, [scopeTx, scopeAccounts]);
+
+      const categoryChartData = useMemo(() => {
+        const cats = scopeCategories[chartTab];
+        const map = {};
+        cats.forEach((c) => (map[c] = 0));
+        monthTx.filter((t) => t.type === chartTab).forEach((t) => { map[t.category] = (map[t.category] || 0) + t.amount; });
+        return cats.map((c) => ({ name: c, total: map[c] })).filter((c) => c.total > 0).sort((a, b) => b.total - a.total);
+      }, [monthTx, chartTab, scopeCategories]);
+
+      const sortedMonthTx = useMemo(() => [...monthTx].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)), [monthTx]);
+
+      function shiftMonth(delta) {
+        setCursor((c) => {
+          let m = c.month + delta;
+          let y = c.year;
+          if (m < 0) { m = 11; y -= 1; } 
+          else if (m > 11) { m = 0; y += 1; }
+          return { year: y, month: m };
+        });
+      }
+
+      const categoryOptions = scopeCategories[form.type] || [];
+      const barColor = chartTab === "pengeluaran" ? "#B54B3E" : "#3F7A5C";
+      const scopeAccent = activeScope === "pribadi" ? "#B98D3E" : "#4E7FB0";
+
+      if (loading) {
+        return (
+          <div style={{ ...styles.page, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ color: "#8A7B60", fontSize: 14 }}>Memuat catatan keuangan...</div>
+          </div>
+        );
+      }
+
+      return (
+        <div style={styles.page}>
+          <style>{`
+            @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+            * { box-sizing: border-box; }
+            body { margin: 0; }
+            input, select, textarea, button { font-family: 'IBM Plex Sans', sans-serif; }
+            input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px solid #B98D3E; outline-offset: 1px; }
+            ::placeholder { color: #9C8F7A; }
+            .fin-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+            .fin-scrollbar::-webkit-scrollbar-thumb { background: #D8CDB4; border-radius: 4px; }
+            @media (max-width: 860px) { .fin-grid { grid-template-columns: 1fr !important; } }
+          `}</style>
+
+          <header style={styles.header}>
+            <div style={styles.headerInner}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={styles.headerIcon}>
+                  <Wallet size={20} color="#F6F1E4" />
+                </div>
+                <div>
+                  <div style={styles.headerTitle}>Buku Kas Digital</div>
+                  <div style={styles.headerSubtitle}>Catatan pemasukan &amp; pengeluaran harian</div>
+                </div>
+              </div>
+              <div style={{ ...styles.stamp, borderColor: `${scopeAccent}A6` }}>
+                <div style={{ ...styles.stampInner, color: scopeAccent === "#B98D3E" ? "#E9C77E" : "#AFCBE8" }}>
+                  <div style={{ fontSize: 8.5, letterSpacing: "0.1em", opacity: 0.9 }}>SALDO {SCOPE_META[activeScope].shortLabel.toUpperCase()}</div>
+                  <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600, fontSize: 14 }}>{rupiah(scopeSaldo)}</div>
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.scopeTabsWrap}>
+              <div style={styles.scopeTabs}>
+                {Object.keys(SCOPE_META).map((key) => (
+                  <button
+                    key={key}
+                    onClick={() => switchScope(key)}
+                    style={{ ...styles.scopeTabBtn, ...(activeScope === key ? styles.scopeTabActive : {}) }}
+                  >
+                    {SCOPE_META[key].icon === "user" ? <User size={14} /> : <Users size={14} />}
+                    {SCOPE_META[key].label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </header>
+
+          <main style={styles.main} className="fin-grid">
+            <section style={styles.slip}>
+              <div style={styles.slipPerforation} />
+              <div style={{ padding: "22px 22px 24px" }}>
+                <div style={styles.slipHeaderRow}>
+                  <h2 style={styles.slipTitle}>{form.id ? "Ubah Transaksi" : "Slip Transaksi"}</h2>
+                  {form.id && (
+                    <button type="button" onClick={resetForm} style={styles.iconBtnGhost} aria-label="Batalkan ubah">
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+                <div style={styles.slipScopeNote}>Buku aktif: <strong>{SCOPE_META[activeScope].label}</strong></div>
+
+                <form onSubmit={handleSubmit}>
+                  <div style={styles.toggleRow}>
+                    <button type="button" onClick={() => handleTypeChange("pemasukan")} style={{ ...styles.toggleBtn, ...(form.type === "pemasukan" ? styles.toggleBtnActiveIncome : {}) }}>+ Pemasukan</button>
+                    <button type="button" onClick={() => handleTypeChange("pengeluaran")} style={{ ...styles.toggleBtn, ...(form.type === "pengeluaran" ? styles.toggleBtnActiveExpense : {}) }}>− Pengeluaran</button>
+                  </div>
+
+                  <label style={styles.label}>Tanggal</label>
+                  <input type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} style={styles.input} required />
+
+                  <div style={styles.labelRow}>
+                    <label style={{ ...styles.label, margin: 0 }}>Rincian (kategori)</label>
+                    <button type="button" onClick={() => setManageOpen((m) => ({ ...m, category: !m.category, account: false }))} style={styles.manageLink}>
+                      <Settings2 size={12} /> {manageOpen.category ? "Tutup" : "Kelola"}
+                    </button>
+                  </div>
+                  <select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} style={styles.input}>
+                    {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  
+                  {manageOpen.category && (
+                    <div style={styles.managePanel}>
+                      <div style={styles.manageHint}>Kategori {form.type} — {SCOPE_META[activeScope].shortLabel}</div>
+                      <div style={styles.chipWrap}>
+                        {categoryOptions.map((c) => (
+                          <span key={c} style={styles.chip}>
+                            {c}
+                            <button type="button" onClick={() => removeCategory(c)} style={styles.chipRemove} aria-label={`Hapus kategori ${c}`}><X size={11} /></button>
+                          </span>
+                        ))}
+                      </div>
+                      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                        <input placeholder="Tambah kategori baru" value={newCategoryInput} onChange={(e) => setNewCategoryInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCategory(); } }} style={{ ...styles.input, flex: 1, background: "#fff" }} />
+                        <button type="button" onClick={addCategory} style={styles.smallBtn}>Tambah</button>
+                      </div>
+                    </div>
+                  )}
+
+                  <label style={styles.label}>Detail</label>
+                  <textarea placeholder={activeScope === "pribadi" ? "Contoh: Makan siang bersama tim di kantor" : "Contoh: Sewa kamera + lensa untuk syuting hari 1"} value={form.detail} onChange={(e) => setForm((f) => ({ ...f, detail: e.target.value }))} style={{ ...styles.input, minHeight: 64, resize: "vertical" }} />
+
+                  <label style={styles.label}>Nominal</label>
+                  <div style={{ position: "relative" }}>
+                    <span style={styles.rpPrefix}>Rp</span>
+                    <input type="text" inputMode="numeric" placeholder="0" value={form.amount === "" ? "" : Number(String(form.amount).replace(/[^0-9]/g, "")).toLocaleString("id-ID")} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value.replace(/[^0-9]/g, "") }))} style={{ ...styles.input, paddingLeft: 40, fontFamily: "'IBM Plex Mono', monospace" }} />
+                  </div>
+
+                  <div style={styles.labelRow}>
+                    <label style={{ ...styles.label, margin: 0 }}>Sumber / tujuan dana</label>
+                    <button type="button" onClick={() => setManageOpen((m) => ({ ...m, account: !m.account, category: false }))} style={styles.manageLink}>
+                      <Settings2 size={12} /> {manageOpen.account ? "Tutup" : "Kelola"}
+                    </button>
+                  </div>
+                  <select value={form.account} onChange={(e) => setForm((f) => ({ ...f, account: e.target.value }))} style={styles.input}>
+                    {scopeAccounts.map((a) => <option key={a} value={a}>{a}</option>)}
+                  </select>
+
+                  {manageOpen.account && (
+                    <div style={styles.managePanel}>
+                      <div style={styles.manageHint}>Akun — {SCOPE_META[activeScope].shortLabel}</div>
+                      <div style={styles.chipWrap}>
+                        {scopeAccounts.map((a) => (
+                          <span key={a} style={styles.chip}>
+                            {a}
+                            <button type="button" onClick={() => removeAccount(a)} style={styles.chipRemove} aria-label={`Hapus akun ${a}`}><X size={11} /></button>
+                          </span>
+                        ))}
+                      </div>
+                      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                        <input placeholder="Tambah akun baru" value={newAccountInput} onChange={(e) => setNewAccountInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addAccount(); } }} style={{ ...styles.input, flex: 1, background: "#fff" }} />
+                        <button type="button" onClick={addAccount} style={styles.smallBtn}>Tambah</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {error && <div style={styles.errorText}>{error}</div>}
+
+                  <button type="submit" disabled={saving} style={styles.submitBtn}>
+                    {saving ? "Menyimpan..." : form.id ? "Simpan Perubahan" : "Catat Transaksi"}
+                  </button>
+                </form>
+              </div>
+            </section>
+
+            <section>
+              <div style={styles.monthNav}>
+                <button onClick={() => shiftMonth(-1)} style={styles.navBtn} aria-label="Bulan sebelumnya"><ChevronLeft size={18} /></button>
+                <div style={styles.monthLabel}>{MONTHS_ID[cursor.month]} {cursor.year}</div>
+                <button onClick={() => shiftMonth(1)} style={styles.navBtn} aria-label="Bulan berikutnya"><ChevronRight size={18} /></button>
+              </div>
+
+              <div style={styles.summaryRow}>
+                <div style={{ ...styles.summaryCard, borderTop: "3px solid #3F7A5C" }}>
+                  <div style={styles.summaryLabel}>Pemasukan</div>
+                  <div style={{ ...styles.summaryValue, color: "#2C5A42" }}>{rupiah(monthIncome)}</div>
+                </div>
+                <div style={{ ...styles.summaryCard, borderTop: "3px solid #B54B3E" }}>
+                  <div style={styles.summaryLabel}>Pengeluaran</div>
+                  <div style={{ ...styles.summaryValue, color: "#9A3B2F" }}>{rupiah(monthExpense)}</div>
+                </div>
+                <div style={{ ...styles.summaryCard, borderTop: `3px solid ${scopeAccent}` }}>
+                  <div style={styles.summaryLabel}>Saldo Bulan Ini</div>
+                  <div style={{ ...styles.summaryValue, color: monthSaldo >= 0 ? "#2C5A42" : "#9A3B2F" }}>{rupiah(monthSaldo)}</div>
+                </div>
+              </div>
+
+              <div style={styles.accountRow} className="fin-scrollbar">
+                {accountBalances.map((a) => (
+                  <div key={a.account} style={styles.accountChip}>
+                    <div style={{ fontSize: 11, opacity: 0.75 }}>{a.account}</div>
+                    <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600, fontSize: 13 }}>{rupiah(a.balance)}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={styles.panel}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <h3 style={styles.panelTitle}>Rincian per Kategori</h3>
+                  <div style={styles.chartTabs}>
+                    <button onClick={() => setChartTab("pengeluaran")} style={{ ...styles.chartTabBtn, ...(chartTab === "pengeluaran" ? styles.chartTabActive : {}) }}>Pengeluaran</button>
+                    <button onClick={() => setChartTab("pemasukan")} style={{ ...styles.chartTabBtn, ...(chartTab === "pemasukan" ? styles.chartTabActive : {}) }}>Pemasukan</button>
+                  </div>
+                </div>
+                {categoryChartData.length === 0 ? (
+                  <div style={styles.emptyState}>Belum ada data {chartTab} pada bulan ini.</div>
+                ) : (
+                  <div style={{ width: "100%", height: Math.max(120, categoryChartData.length * 40) }}>
+                    <ResponsiveContainer>
+                      <BarChart data={categoryChartData} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#E4DAC4" horizontal={false} />
+                        <XAxis type="number" tickFormatter={(v) => (v >= 1000000 ? `${(v / 1000000).toFixed(1)}jt` : `${Math.round(v / 1000)}rb`)} tick={{ fontSize: 11, fill: "#6B5F4C" }} axisLine={{ stroke: "#D8CDB4" }} />
+                        <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 12, fill: "#3A322A" }} axisLine={{ stroke: "#D8CDB4" }} />
+                        <Tooltip formatter={(v) => rupiah(v)} contentStyle={{ fontSize: 12, borderRadius: 6 }} />
+                        <Bar dataKey="total" radius={[0, 4, 4, 0]}>
+                          {categoryChartData.map((_, i) => <Cell key={i} fill={barColor} fillOpacity={1 - i * 0.08} />)}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+
+              <div style={styles.panel}>
+                <h3 style={styles.panelTitle}>Transaksi {MONTHS_ID[cursor.month]}</h3>
+                {sortedMonthTx.length === 0 ? (
+                  <div style={styles.emptyState}>Belum ada transaksi {SCOPE_META[activeScope].shortLabel.toLowerCase()} di bulan ini. Isi slip di sebelah kiri untuk mulai mencatat.</div>
+                ) : (
+                  <div>
+                    {sortedMonthTx.map((t) => (
+                      <div key={t.id} style={styles.txRow}>
+                        <div style={styles.txDate}>{new Date(t.date + "T00:00:00").toLocaleDateString("id-ID", { day: "2-digit", month: "short" })}</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 500, fontSize: 13.5, color: "#2B2320" }}>{t.category}</div>
+                          {t.detail && <div style={{ fontSize: 12.5, color: "#7A6E5A", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.detail}</div>}
+                        </div>
+                        <div style={styles.txAccount}>{t.account}</div>
+                        <div style={{ ...styles.txAmount, color: t.type === "pemasukan" ? "#2C5A42" : "#9A3B2F" }}>
+                          {t.type === "pemasukan" ? "+" : "−"} {rupiah(t.amount)}
+                        </div>
+                        <div style={{ display: "flex", gap: 4 }}>
+                          <button onClick={() => handleEdit(t)} style={styles.iconBtnGhost} aria-label="Ubah"><Pencil size={14} /></button>
+                          <button onClick={() => handleDelete(t.id)} style={styles.iconBtnGhost} aria-label="Hapus"><Trash2 size={14} /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={styles.footer}>
+                {scopeTx.length > 0 && (
+                  <button onClick={handleResetScope} style={styles.resetLink}>Hapus semua data {SCOPE_META[activeScope].shortLabel.toLowerCase()}</button>
+                )}
+              </div>
+            </section>
+          </main>
+        </div>
+      );
+    }
+
+    const styles = {
+      page: { minHeight: "100vh", background: "#F6F1E4", fontFamily: "'IBM Plex Sans', sans-serif", color: "#2B2320" },
+      header: { background: "linear-gradient(180deg, #1B3830 0%, #16302B 100%)", padding: "18px 20px 0" },
+      headerInner: { maxWidth: 1080, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, paddingBottom: 16 },
+      headerIcon: { width: 38, height: 38, borderRadius: 10, background: "rgba(246,241,228,0.12)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid rgba(246,241,228,0.25)" },
+      headerTitle: { fontFamily: "'Fraunces', serif", fontSize: 20, fontWeight: 600, color: "#F6F1E4", letterSpacing: "0.01em" },
+      headerSubtitle: { fontSize: 12, color: "#B7C9C1", marginTop: 1 },
+      stamp: { border: "2px dashed rgba(185,141,62,0.65)", borderRadius: "50%", width: 104, height: 104, display: "flex", alignItems: "center", justifyContent: "center", transform: "rotate(-6deg)", flexShrink: 0, transition: "border-color 0.2s ease" },
+      stampInner: { textAlign: "center", padding: "0 6px" },
+      scopeTabsWrap: { maxWidth: 1080, margin: "0 auto", borderTop: "1px solid rgba(246,241,228,0.12)" },
+      scopeTabs: { display: "flex", gap: 4 },
+      scopeTabBtn: { display: "flex", alignItems: "center", gap: 7, padding: "11px 18px", border: "none", borderBottom: "2px solid transparent", background: "transparent", color: "#B7C9C1", fontSize: 13.5, fontWeight: 500, cursor: "pointer" },
+      scopeTabActive: { color: "#F6F1E4", borderBottom: "2px solid #B98D3E" },
+      main: { maxWidth: 1080, margin: "0 auto", padding: "24px 20px 60px", display: "grid", gridTemplateColumns: "340px 1fr", gap: 22, alignItems: "start" },
+      slip: { background: "#FFFDF8", borderRadius: 10, border: "1px solid #E4DAC4", boxShadow: "0 1px 2px rgba(43,35,32,0.04)", position: "sticky", top: 20 },
+      slipPerforation: { height: 6, background: "repeating-linear-gradient(90deg, transparent, transparent 6px, #E4DAC4 6px, #E4DAC4 8px)", borderTopLeftRadius: 10, borderTopRightRadius: 10 },
+      slipHeaderRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 },
+      slipTitle: { fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 600, margin: 0, color: "#1B3830" },
+      slipScopeNote: { fontSize: 12, color: "#8A7B60", marginBottom: 14 },
+      toggleRow: { display: "flex", gap: 8, marginBottom: 16 },
+      toggleBtn: { flex: 1, padding: "9px 8px", borderRadius: 7, border: "1px solid #D8CDB4", background: "#FBF7EE", color: "#6B5F4C", fontSize: 13, fontWeight: 500, cursor: "pointer" },
+      toggleBtnActiveIncome: { background: "#3F7A5C", borderColor: "#3F7A5C", color: "#fff" },
+      toggleBtnActiveExpense: { background: "#B54B3E", borderColor: "#B54B3E", color: "#fff" },
+      label: { display: "block", fontSize: 11.5, fontWeight: 600, color: "#8A7B60", letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 6, marginTop: 14 },
+      labelRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, marginBottom: 6 },
+      manageLink: { display: "flex", alignItems: "center", gap: 4, border: "none", background: "transparent", color: "#8A6A2E", fontSize: 11, fontWeight: 600, cursor: "pointer", padding: "2px 4px" },
+      managePanel: { marginTop: 8, padding: "10px 12px 12px", background: "#F1EBDC", border: "1px solid #D8CDB4", borderRadius: 8 },
+      manageHint: { fontSize: 10.5, color: "#8A7B60", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8 },
+      chipWrap: { display: "flex", flexWrap: "wrap", gap: 6 },
+      chip: { display: "inline-flex", alignItems: "center", gap: 5, background: "#FFFDF8", border: "1px solid #D8CDB4", borderRadius: 999, padding: "4px 6px 4px 10px", fontSize: 12, color: "#3A322A" },
+      chipRemove: { width: 16, height: 16, borderRadius: "50%", border: "none", background: "#EFE2CC", color: "#6B5F4C", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 },
+      input: { width: "100%", padding: "9px 11px", borderRadius: 7, border: "1px solid #D8CDB4", background: "#FBF7EE", fontSize: 13.5, color: "#2B2320" },
+      rpPrefix: { position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 13.5, color: "#8A7B60", fontFamily: "'IBM Plex Mono', monospace", pointerEvents: "none" },
+      smallBtn: { padding: "0 14px", borderRadius: 7, border: "1px solid #B98D3E", background: "#B98D3E", color: "#fff", fontSize: 12.5, fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap" },
+      submitBtn: { width: "100%", marginTop: 20, padding: "11px", borderRadius: 7, border: "none", background: "#1B3830", color: "#F6F1E4", fontSize: 14, fontWeight: 600, cursor: "pointer" },
+      errorText: { marginTop: 12, fontSize: 12.5, color: "#9A3B2F", background: "#FBEAE6", padding: "8px 10px", borderRadius: 6 },
+      iconBtnGhost: { width: 28, height: 28, borderRadius: 6, border: "1px solid #D8CDB4", background: "transparent", color: "#6B5F4C", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" },
+      monthNav: { display: "flex", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 16 },
+      navBtn: { width: 32, height: 32, borderRadius: "50%", border: "1px solid #D8CDB4", background: "#FFFDF8", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#1B3830" },
+      monthLabel: { fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 600, color: "#1B3830", minWidth: 170, textAlign: "center" },
+      summaryRow: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 14 },
+      summaryCard: { background: "#FFFDF8", border: "1px solid #E4DAC4", borderRadius: 8, padding: "12px 14px" },
+      summaryLabel: { fontSize: 11.5, color: "#8A7B60", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 },
+      summaryValue: { fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600, fontSize: 15 },
+      accountRow: { display: "flex", gap: 10, overflowX: "auto", paddingBottom: 6, marginBottom: 16 },
+      accountChip: { flexShrink: 0, background: "#EFE7D2", border: "1px solid #D8CDB4", borderRadius: 8, padding: "8px 14px", minWidth: 108 },
+      panel: { background: "#FFFDF8", border: "1px solid #E4DAC4", borderRadius: 10, padding: "16px 18px", marginBottom: 16 },
+      panelTitle: { fontFamily: "'Fraunces', serif", fontSize: 15.5, fontWeight: 600, color: "#1B3830", margin: 0 },
+      chartTabs: { display: "flex", gap: 6, background: "#F1EBDC", padding: 3, borderRadius: 7 },
+      chartTabBtn: { border: "none", background: "transparent", padding: "5px 10px", borderRadius: 5, fontSize: 12, color: "#6B5F4C", cursor: "pointer" },
+      chartTabActive: { background: "#1B3830", color: "#F6F1E4" },
+      emptyState: { fontSize: 13, color: "#9C8F7A", padding: "18px 4px", textAlign: "center" },
+      txRow: { display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid #EFE7D2" },
+      txDate: { fontSize: 12, color: "#8A7B60", width: 46, flexShrink: 0 },
+      txAccount: { fontSize: 11.5, color: "#6B5F4C", background: "#F1EBDC", padding: "3px 8px", borderRadius: 5, flexShrink: 0, whiteSpace: "nowrap" },
+      txAmount: { fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", flexShrink: 0 },
+      footer: { textAlign: "center", marginTop: 8 },
+      resetLink: { border: "none", background: "transparent", color: "#B3897A", fontSize: 12, cursor: "pointer", textDecoration: "underline" },
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<FinanceApp />);
+  </script>
+</body>
+</html>
